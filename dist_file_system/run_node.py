@@ -228,13 +228,16 @@ def run_server():
     client_idxs = [ idx for idx in neighbors if idx > node.idx ]
 
     server_socket = Socket(AF_INET, SOCK_STREAM)
-    # server_socket.setblocking(0) # Non-blocking
-    server_socket.bind(( node.ip, node.port ))
+    ip = '0.0.0.0'
+    server_socket.bind(( ip, node.port ))
     server_socket.listen(5)
 
     while client_idxs:
-
+        node_print(client_idxs)
+        if node.idx == 2:
+            import pdb;pdb.set_trace()
         client_socket, client_addr = server_socket.accept()
+        print "anything"
         msg = client_socket.recv(msg_size)
 
         if msg.isdigit():
@@ -260,6 +263,7 @@ def connect():
         while 1:
 
             try:
+                print neighbors[idx].ip, neighbors[idx].port
                 neighbors[idx].socket.connect(( neighbors[idx].ip , neighbors[idx].port ))
                 break
             except socket.error:
