@@ -234,8 +234,6 @@ def run_server():
 
     while client_idxs:
         node_print(client_idxs)
-        if node.idx == 2:
-            import pdb;pdb.set_trace()
         client_socket, client_addr = server_socket.accept()
         print "anything"
         msg = client_socket.recv(msg_size)
@@ -348,15 +346,14 @@ def main_loop():
                     # Note that here we assume that file names are unique
                     ret = file_system.create(msg['token'])
                     if ret:
-                        print '\nFile {} was created by someone else'.format(msg['token'])
+                        print '\n[System info]: File {} was created by someone else'.format(msg['token'])
                         print_input_sign()
                     else:
-                        print '\nFailed to sync the file {}'.format(msg['token'])
+                        print '\n[System info]: Failed to sync the file {}'.format(msg['token'])
                         print_input_sign()
                     thread = threading.Thread(target=raymond_alg_loop, args=(msg['token'], msg['sender']))
                     thread.start()
                     token_thread_pool[msg['token']] = thread
-                    # import pdb;pdb.set_trace()
                     # broadcast init token event
                     new_msg = pack_msg(node.idx, INIT_TOKEN, msg['token']) # send init-token msg
                     for other_socket in sockets:
@@ -384,10 +381,11 @@ def main_loop():
             else:
                 # Interpret empty result as closed connection
                 # Stop listening for input on the connection
-                print stderr, 'closing connection to Node #{} after reading no data'.format(search_idx_by_socket(neighbors, s))
+                print 'closing connection to Node #{} after reading no data'.format(search_idx_by_socket(neighbors, s))
                 if s in outputs:
                     outputs.remove(s)
                 inputs.remove(s)
+                sockets.remove(s)
                 # out_msg_lock.acquire()
                 del out_msg_queues[s]
                 # out_msg_lock.release()
@@ -401,6 +399,8 @@ def main_loop():
         for s in writable:
             try:
                 # out_msg_lock.acquire()
+                if not s in out_msg_queues:
+                    continue
                 next_msg = out_msg_queues[s].get_nowait()
                 # out_msg_lock.release()
             except Queue.Empty:
@@ -414,6 +414,7 @@ def main_loop():
             print stderr, 'closing connection to Node #{} for exceptional condition'.format(search_idx_by_socket(neighbors, s))
             # Stop listening for input on the connection
             inputs.remove(s)
+            sockets.remove(s)
             if s in outputs:
                 outputs.remove(s)
             del out_msg_queues[s]
@@ -431,7 +432,6 @@ def raymond_alg_loop(token, holder_idx):
         # Get the token from others and then use the resource
         if state.using_res and not user_state.grant and user_state.token == token and \
             (user_state.op == DELETE_OP or user_state.op == READ_OP or user_state.op == APPEND_OP):
-            # import pdb;pdb.set_trace()
             user_state.grant = True # Grant the access to token
             if user_state.op == APPEND_OP:
                 append_token(token, user_state.content)
@@ -445,7 +445,6 @@ def raymond_alg_loop(token, holder_idx):
         # To request a resource
         if user_state.req and not user_state.grant and user_state.token == token and \
             (user_state.op == DELETE_OP or user_state.op == READ_OP or user_state.op == APPEND_OP):
-            # import pdb;pdb.set_trace()
             state = req_resource(token, state)
             user_state.req = False
             if state.using_res:
@@ -477,24 +476,22 @@ def raymond_alg_loop(token, holder_idx):
                 else:
                     msg = json.loads(msg)
                     if msg['type'] == REQ_TOKEN:
-                        # import pdb;pdb.set_trace()
                         nbr = search_idx_by_socket(neighbors, s)
                         if nbr == -1:
                             continue
                         state = recv_req(token, state, nbr)
                     elif msg['type'] == ASSIGN_TOKEN:
-                        # import pdb;pdb.set_trace()
-                        state = recv_token(token, state)
+                        state = recv_token(token, state, search_idx_by_socket(neighbors, s))
                     elif msg['type'] == APPEND_TOKEN:
                         append_token(token, msg['content'], [s])
                         file_system.append(token, msg['content'])
-                        print '\nFile {} was appended by someone else'.format(token)
+                        print '\n[System info]: File {} was appended by someone else'.format(token)
                         print_input_sign()
                     elif msg['type'] == DELETE_TOKEN:
                         # del in_msg_queues
                         delete_token(token, [s])
                         file_system.delete(token) # delete local backup of the resource
-                        print '\nFile {} was deleted by someone else'.format(token)
+                        print '\n[System info]: File {} was deleted by someone else'.format(token)
                         print_input_sign()
                         # in case that user is requiring this resource
                         if user_state.token == token and (user_state.op == DELETE_OP or \
@@ -510,12 +507,12 @@ def assign_token(token, state):
         state.holder_idx = state.req_q.get_nowait()
         state.asked = False
         if state.holder_idx == node.idx:
-            # import pdb;pdb.set_trace()
             state.using_res = True
         else:
             # Send token to holder
             msg = pack_msg(node.idx, ASSIGN_TOKEN, token)
             out_msg_queues[neighbors[state.holder_idx].socket].put(msg)
+            print '[Debug info]: send the token {} to Node#{}'.format(token, state.holder_idx)
     return state
 
 def send_req(token, state):
@@ -544,17 +541,17 @@ def release_resource(token, state):
 def recv_req(token, state, nbr):
     # On receipt of REQ from neighbor
     # Add neighbor to reqQ
-    # import pdb;pdb.set_trace()
     state.req_q.put(nbr)
     state = assign_token(token, state)
     state = send_req(token, state)
     return state
 
-def recv_token(token, state):
+def recv_token(token, state, from_idx):
     # On receipt of token
     state.holder_idx = node.idx
     state = assign_token(token, state)
     state = send_req(token, state)
+    print '[Debug info]: recv the token {} from Node#{}'.format(token, from_idx)
     return state
 
 def delete_token(token, filter_list=[]):
