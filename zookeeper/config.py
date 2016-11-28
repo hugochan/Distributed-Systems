@@ -1,7 +1,27 @@
+import re
+
+configFilePath = 'toy-config.txt'
+history_loc = 'backup/'
+configRE = re.compile( r'^(?P<idx>\d+) (?P<ip>.*?):(?P<port>\d+)$', re.M )
+
 
 CREATE_OP = 'create'
 DELETE_OP = 'delete'
 APPEND_OP = 'append'
+READ_OP = 'read'
+
+ELECTION = 'ELECTION'
+ELECTOK = 'ELECTOK'
+COORDINATOR = 'COORDINATOR'
+
+SYNCHREQ = 'SYNCHREQ'
+SYNCHACK = 'SYNCHACK'
+SYNCHCOM = 'SYNCHCOM'
+
+BCASTREQ = 'BCASTREQ'
+BROADCAST = 'BROADCAST'
+BCASTACK = 'BCASTACK'
+BCASTCOM = 'BCASTCOM'
 
 
 create_usage_line = 'Usage: create <filename>: creates an empty file named <filename>.'
