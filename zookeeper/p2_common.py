@@ -3,11 +3,57 @@ import re
 
 from socket import error as SocketError
 from threading import RLock, Thread
-from config import *
+
 ########
+
+storageDirPath = 'backup'
+
+configFilePath = 'config.txt'
+configRE = re.compile( r'^(?P<idx>\d+) (?P<ip>.*?):(?P<port>\d+)$', re.M )
+
+electionTimeout = 3
 
 opening = 'CSCI 6963 Distributed Systems & Algorithms F16 P2. Yu Chen and Rhaad Rabbani.\nType "exit" or "quit" to terminate.'
 exitCmds = [ 'exit', 'quit' ]
+
+CREATE_OP = 'create'
+DELETE_OP = 'delete'
+APPEND_OP = 'append'
+READ_OP = 'read'
+
+# phase 0 - 2
+ELECTION = 'ELECTION'
+ELECTOK = 'ELECTOK'
+COORD_SYNCHPROP = 'COORD_SYNCHPROP'
+SYNCHACK = 'SYNCHACK'
+SYNCHCOM = 'SYNCHCOM'
+
+# phase 3
+BCASTREQ = 'BCASTREQ'
+BCASTPROP = 'BCASTPROP'
+BCASTACK = 'BCASTACK'
+BCASTCOM = 'BCASTCOM'
+BCASTREQREP = 'BCASTREQREP'
+
+usageDict = { CREATE_OP: 'Usage: create <filename>: creates an empty file named <filename>.',
+              DELETE_OP: 'Usage: delete <filename>: deletes file named <filename>.',
+              READ_OP: 'Usage: read <filename>: displays the contents of <filename>.',
+              APPEND_OP: 'Usage: append <filename> <line>: appends a <line> to <filename>.' }
+
+phaseDict = { 0: 'pre-broadcast, leaderless',
+              2: 'pre-broadcast, with leader',
+              3: 'broadcast'}
+
+msgDict = { ELECTION: lambda msg: '[ELECTION, zxid={}]'.format( msg[ 1 ] ),
+            ELECTOK: lambda msg: '[ELECTOK]',
+            COORD_SYNCHPROP: lambda msg: '[COORD_SYNCHPROP, [epoch={}, hist={}]]'.format( msg[ 1 ][ 0 ], msg[ 1 ][ 1 ] ),
+            SYNCHACK: lambda msg: '[SYNCHACK, epoch={}]'.format( msg[ 1 ] ),
+            SYNCHCOM: lambda msg: '[SYNCHCOM, epoch={}]'.format( msg[ 1 ] ),
+            BCASTREQ: lambda msg: '[BCASTREQ, cmd={}]'.format( msg[ 1 ] ),
+            BCASTPROP: lambda msg: '[BCASTPROP, [zxid={}, cmd={}]]'.format( msg[ 1 ][ 0 ], msg[ 1 ][ 1 ] ),
+            BCASTACK: lambda msg: '[BCASTACK, zxid={}]'.format( msg[ 1 ] ),
+            BCASTCOM: lambda msg: '[BCASTCOM, zxid={}]'.format( msg[ 1 ] ),
+            BCASTREQREP: lambda msg: '[BCASTREQREP, {}]'.format( msg[ 1 ] ) }
 
 ########
 
@@ -69,13 +115,9 @@ class Peer:
                 if chunkLen == 0: return
                 msgLen -= chunkLen
         except SocketError as e:
-            print e
-            # pass # socket will be set to None when read thread fails
+            pass # socket will be set to None when read thread fails
 
 ########
-
-# configFilePath = 'config.txt'
-# configRE = re.compile( r'^(?P<idx>\d+) (?P<ip>.*?):(?P<port>\d+)$', re.M )
 
 def readConfigFile( localPeerIdx ):
 
@@ -99,10 +141,14 @@ def readConfigFile( localPeerIdx ):
 
     return localPeer, remotePeerDict
 
+#########
+                
 def parseCmd( cmd ):
-    cmd = cmd.split()
-    if cmd and ( cmd[0].lower() in [CREATE_OP, DELETE_OP, READ_OP] and len(cmd) == 2 or\
-            cmd[0].lower() == APPEND_OP and len(cmd) == 3 ):
-        return cmd
-    else:
-        return None
+    cmd = re.compile( ' +' ).split( cmd, 2 )
+    if cmd:
+        cmd[ 0 ] = cmd[ 0 ].lower( )
+        if cmd[ 0 ] in [ CREATE_OP, DELETE_OP, READ_OP ] and len( cmd ) == 2  or cmd[ 0 ] == APPEND_OP and len( cmd ) == 3:
+            return cmd
+        elif cmd[ 0 ] in [ CREATE_OP, DELETE_OP, READ_OP, APPEND_OP ]:
+            return cmd[ : 1 ]
+    

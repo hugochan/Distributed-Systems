@@ -1,10 +1,11 @@
-from os import _exit as osExit
+import os
+
 from socket import socket as Socket, error as SocketError, AF_INET, SOCK_STREAM
 from sys import argv, stdin, stdout
 from threading import Event, Thread
 
-from config import *
-from p2_common import Peer, exitCmds, opening, readConfigFile, parseCmd
+from p2_common import *
+
 ########
 
 class Network( ):
@@ -13,42 +14,38 @@ class Network( ):
 
         self.remotePeer = remotePeer
         remotePeer.network = self
-
-        self.prettyPrintLn( opening )
-
-    def prettyPrint( self ): stdout.write( 'client >>> ' )
-
-    def prettyPrintLn( self, text ): stdout.write( '{}\nclient >>> '.format( text ) )
+        self.block = Event( )
 
     def start( self ):
 
         Thread( target = self.readStdIn ).start( )
-
+        
         socket = Socket( AF_INET, SOCK_STREAM )
-        msg = 'CLIENT'
         try:
             socket.connect( self.remotePeer.addr )
-            socket.send( msg )
+            socket.send( 'CLIENT' )
             self.remotePeer.onConnect( socket )
         except SocketError:
-            print 'could not connect to server'.format( msg )
-            osExit( 1 )
+            print 'failed to connect to server'
+            os._exit( 1 )
 
     def readStdIn( self ):
 
         while True:
             cmd = stdin.readline( ).strip( )
-            if cmd.lower() in exitCmds: break
-            # parse the cmd
-            parse_cmd = parseCmd( cmd )
-            if parse_cmd:
-                self.prettyPrintLn( 'sending "{}"'.format( ' '.join( parse_cmd ) ) )
-                self.remotePeer.write( ' '.join( parse_cmd ) )
+            if cmd.lower( ) in exitCmds: break
+            prettyPrint( )
+            cmd2 = parseCmd( cmd )
+            if cmd2:
+                if len( cmd2 ) > 1:
+                    self.remotePeer.write( cmd )
+                    self.block.clear( )
+                    self.block.wait( )
+                else:
+                    prettyPrintLn( usageDict[ cmd2[ 0 ] ] )
             else:
-                self.prettyPrintLn( '{}: command not found'.format( cmd ) )
-            self.prettyPrint( )
-
-        osExit( 1 )
+                prettyPrintLn( 'command not valid' )
+        os._exit( 1 )
 
     def onConnect( self, remotePeer ):
 
@@ -57,12 +54,18 @@ class Network( ):
     def onDisconnect( self, remotePeer ):
 
         print 'disconnected from server'
-        osExit( 1 )
+        os._exit( 1 )
 
     def onRecv( self, remotePeer, msg ):
 
-        self.prettyPrintLn( msg )
+        self.block.set( )
+        prettyPrintLn( 'server says "{}"'.format( msg ) )
 
+########
+
+def prettyPrint( ): stdout.write( 'client >>> ' )
+
+def prettyPrintLn( text ): stdout.write( '{}\nclient >>> '.format( text ) )
 
 ########
 
@@ -76,8 +79,10 @@ def main( ):
 
     remotePeerIdx = int( argv[ 1 ] )
     remotePeer, _ = readConfigFile( remotePeerIdx )
-
-    Network( remotePeer ).start( )
+    network = Network( remotePeer )
+    
+    prettyPrintLn( opening )
+    network.start( )
     Event( ).wait( )
 
 ########
