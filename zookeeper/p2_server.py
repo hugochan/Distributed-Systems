@@ -1,7 +1,7 @@
 import json
 import os
 
-from socket import socket as Socket, error as SocketError, AF_INET, SOCK_STREAM, SOL_SOCKET, SO_REUSEADDR
+from socket import socket as Socket, error as SocketError, AF_INET, SOCK_STREAM, SOL_SOCKET, SO_REUSEADDR, SHUT_RDWR
 from sys import argv, stdin, stdout
 from threading import Event, RLock, Thread, Timer
 from time import sleep
@@ -9,6 +9,9 @@ from time import sleep
 from p2_common import *
 
 ########
+
+listening = False
+listenSocket = None
 
 class Network:
 
@@ -30,24 +33,34 @@ class Network:
         while True:
             if stdin.readline( ).strip( ).lower( ) in exitCmds: break
             prettyPrint( )
+        if listening:
+            listenSocket.shutdown( SHUT_RDWR )
+            listenSocket.close( )
+            #sleep( 1 )
         os._exit( 1 )
 
     def listen( self ):
 
+        global listening, listenSocket
+
         listenSocket = Socket( AF_INET, SOCK_STREAM )
-        #listenSocket.setsockopt(SOL_SOCKET, SO_REUSEADDR, 1)
-        listenSocket.bind( self.localPeer.addr )
+        listenSocket.setsockopt(SOL_SOCKET, SO_REUSEADDR, 1)
+        listenSocket.bind( ( '0.0.0.0', self.localPeer.addr[ 1 ] ) )
+        listening = True
         listenSocket.listen( len( self.remotePeerDict ) )
-        while True:
-            socket, addr = listenSocket.accept( )
-            msg = socket.recv( 6 )
-            if msg[ : 4 ] == 'PEER':
-                idx = int( msg[ 4 : ] )
-                self.remotePeerDict[ idx ].onConnect( socket )
-            elif msg == 'CLIENT':
-                client = Peer( 'client', None )
-                client.network = self
-                client.onConnect( socket )
+        try:
+            while True:
+                socket, addr = listenSocket.accept( )
+                msg = socket.recv( 6 )
+                if msg[ : 4 ] == 'PEER':
+                    idx = int( msg[ 4 : ] )
+                    self.remotePeerDict[ idx ].onConnect( socket )
+                elif msg == 'CLIENT':
+                    client = Peer( 'client', None )
+                    client.network = self
+                    client.onConnect( socket )
+        except SocketError:
+            pass
 
     def connect( self, remotePeer ):
 

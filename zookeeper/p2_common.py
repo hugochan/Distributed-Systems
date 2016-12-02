@@ -1,7 +1,7 @@
 import json
 import re
 
-from socket import error as SocketError
+from socket import error as SocketError, SHUT_RDWR
 from threading import RLock, Thread
 
 ########
@@ -100,6 +100,8 @@ class Peer:
                 msg = json.loads( ''.join( msg ) )
                 self.network.onRecv( self, msg )
         except SocketError:
+      #      self.socket.shutdown( SHUT_RDWR )
+            self.socket.close( )
             self.socket = None
             self.network.onDisconnect( self )
 
